@@ -1,0 +1,76 @@
+# =============================================================================
+# docker compose - orquesta los dos pasos del proyecto en cualquier nube:
+#   1) prepare   : deja el ADN en ./data
+#                  - con DNA_URL  -> descarga el genoma real (Dropbox/NCBI)
+#                  - sin DNA_URL  -> genera ADN sintético determinista
+#   2) processor : procesa el ADN (secuencial + paralelo) y deja el JSON en ./results
+#
+# Uso:
+#   docker compose up                          -> prepara y procesa
+#   docker compose run --rm processor --mode benchmark
+#
+# Las variables se leen del archivo .env (ver .env.example).
+# =============================================================================
+services:
+  prepare:
+    image: ${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}
+    build: .
+    entrypoint: ["python", "prepare_data.py"]
+    environment:
+      DNA_FILE: /data/adn.txt
+      DNA_URL: ${DNA_URL:-}           # enlace del genoma real (vacío = sintético)
+      DNA_LIMIT_MB: ${DNA_LIMIT_MB:-0}  # 0 = archivo completo
+      DNA_SIZE: ${DNA_SIZE:-100MB}    # solo para el ADN sintético
+      SEED: ${SEED:-2026}
+    volumes:
+      - ./data:/data
+    restart: "no"
+
+  processor:
+    image: ${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}
+    build: .
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    environment:
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-local}
+      CLOUD_ORIGIN: ${CLOUD_ORIGIN:-desconocido}
+      CLOUD_REGION: ${CLOUD_REGION:-desconocida}
+      INSTANCE_TYPE: ${INSTANCE_TYPE:-desconocido}
+      MODE: ${MODE:-both}
+      WORKERS: ${WORKERS:-0}          # 0 = todos los núcleos disponibles
+      CHUNK_MB: ${CHUNK_MB:-32}
+      PATTERN: ${PATTERN:-GATTACA}
+    volumes:
+      - ./data:/data:ro               # el ADN se monta en solo lectura
+      - ./results:/results
+    restart: "no"
+
+  # Interfaz gráfica: docker compose up dashboard  ->  http://localhost:8080
+  # (perfil "ui": no arranca con un "docker compose up" normal)
+  dashboard:
+    image: ${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}
+    build: .
+    profiles: ["ui"]
+    ports:
+      - "${DASHBOARD_PORT:-8080}:8080"
+    environment:
+      APP_MODE: server
+      PORT: "8080"
+      DNA_FILE: /data/adn.txt
+      DNA_URL: ${DNA_URL:-}
+      DNA_LIMIT_MB: ${DNA_LIMIT_MB:-0}
+      DNA_SIZE: ${DNA_SIZE:-100MB}
+      SEED: ${SEED:-2026}
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-local}
+      CLOUD_ORIGIN: ${CLOUD_ORIGIN:-desconocido}
+      CLOUD_REGION: ${CLOUD_REGION:-desconocida}
+      INSTANCE_TYPE: ${INSTANCE_TYPE:-desconocido}
+      MODE: ${MODE:-both}
+      WORKERS: ${WORKERS:-0}
+      CHUNK_MB: ${CHUNK_MB:-32}
+      PATTERN: ${PATTERN:-GATTACA}
+    volumes:
+      - ./data:/data                  # reutiliza el genoma ya descargado
+      - ./results:/results            # incluye results/<nube>/ de cada despliegue
+    restart: unless-stopped

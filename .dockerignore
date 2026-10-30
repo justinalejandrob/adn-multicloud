@@ -1,0 +1,13 @@
+data/
+results/
+analysis/
+scripts/
+.git/
+.github/
+**/__pycache__/
+*.pyc
+*.md
+.env
+clouds.env
+*.pem
+*.key

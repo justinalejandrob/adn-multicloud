@@ -1,0 +1,84 @@
+# =============================================================================
+# CI/CD: en cada push a main
+#   1. Prueba el programa (genera 4 MB de ADN y valida secuencial == paralelo)
+#   2. Construye la imagen para amd64 y arm64
+#   3. La publica en GitHub Container Registry (ghcr.io)
+#   4. (Opcional, manual) despliega en las 4 nubes por SSH
+# =============================================================================
+name: build-test-deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Desplegar en las nubes después de construir"
+        type: boolean
+        default: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/adn-multicloud
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r app/requirements.txt
+      - name: Prueba funcional con 4 MB
+        working-directory: app
+        run: |
+          python generate_dna.py --size 4MB --output ../data/adn.txt
+          python dna_processor.py --input ../data/adn.txt --mode both --workers 2
+
+  build-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Normalizar nombre de imagen (ghcr exige minúsculas)
+        run: echo "IMAGE=${IMAGE,,}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  deploy:
+    needs: build-push
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargar llave SSH y lista de nubes desde Secrets
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/cloud.pem
+          chmod 600 ~/.ssh/cloud.pem
+          echo "${{ secrets.CLOUDS_ENV }}" > clouds.env
+          echo "IMAGE=${IMAGE,,}:latest" >> "$GITHUB_ENV"
+      - name: Migrar a las 4 nubes
+        env:
+          DNA_SIZE: 100MB
+        run: bash scripts/migrate_all.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: resultados-multinube
+          path: results/
