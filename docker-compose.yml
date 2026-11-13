@@ -46,16 +46,22 @@ services:
       - ./results:/results
     restart: "no"
 
-  # Interfaz gráfica: docker compose up dashboard  ->  http://localhost:8080
+  # Interfaz gráfica + maestro del clúster:
+  #   docker compose up dashboard  ->  http://localhost:8080
   # (perfil "ui": no arranca con un "docker compose up" normal)
+  # Solo escucha en 127.0.0.1: no queda expuesto a internet.
   dashboard:
     image: ${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}
     build: .
     profiles: ["ui"]
     ports:
-      - "${DASHBOARD_PORT:-8080}:8080"
+      - "127.0.0.1:${DASHBOARD_PORT:-8080}:8080"
     environment:
       APP_MODE: server
+      DASH_PASS: ${DASH_PASS:-}             # clave opcional del dashboard (usuario adn)
+      # Clúster: con el túnel de conectar.sh abierto, el dashboard local también
+      # puede leer etcd:  ETCD_ENDPOINTS=http://host.docker.internal:2379
+      ETCD_ENDPOINTS: ${ETCD_ENDPOINTS:-}
       PORT: "8080"
       DNA_FILE: /data/adn.txt
       DNA_URL: ${DNA_URL:-}

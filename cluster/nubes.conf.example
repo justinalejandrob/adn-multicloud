@@ -1,0 +1,15 @@
+# =============================================================================
+# nubes.conf - Las 5 nubes del clúster (copie como cluster/nubes.conf).
+# Una línea por nube, campos separados por "|":
+#   nombre | usuario@IP_PUBLICA | puerto_ssh | IP_privada_WireGuard | proveedor | país | región | instancia | USD/hora | USD/mes | cobro
+# - USD/hora: para nubes que cobran por hora (AWS, Alibaba, OVH).
+# - USD/mes : para VPS de cuota mensual (Telecu, DonWeb); se prorratea a 730 h.
+# - cobro   : crédito / tarjeta / estimado (se muestra en el costo por transacción).
+# Ajuste los precios con los de SU panel. Este archivo NO se sube a GitHub.
+# El orden de las líneas es el ORDEN de prioridad para ser líder.
+# =============================================================================
+usa     | ubuntu@IP_USA     | 22   | 10.99.0.1 | aws      | EE.UU.    | us-east-2 Ohio | m7i-flex.large | 0.0958 | 0     | crédito
+europa  | ubuntu@IP_EUROPA  | 22   | 10.99.0.2 | ovhcloud | Alemania  | DE1 Fráncfort  | b3-16          | 0.1410 | 0     | crédito
+china   | root@IP_CHINA     | 22   | 10.99.0.3 | alibaba  | Singapur  | ap-southeast-1 | ecs.c9i.xlarge | 0.1727 | 0     | tarjeta
+latam   | root@IP_LATAM     | 5349 | 10.99.0.5 | donweb   | Argentina | Buenos Aires   | Cloud Server   | 0      | 10.00 | estimado
+ecuador | root@IP_ECUADOR   | 22   | 10.99.0.4 | telecu   | Ecuador   | Quito          | TPX01          | 0      | 11.50 | tarjeta

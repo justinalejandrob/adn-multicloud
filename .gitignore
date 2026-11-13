@@ -6,3 +6,8 @@ clouds.env
 *.key
 __pycache__/
 *.pyc
+
+# Clúster: datos reales, IPs y claves NO van al repositorio
+cluster/nubes.conf
+.cache/
+.prueba/

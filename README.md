@@ -1,13 +1,18 @@
 # ADN Multinube: comparación de ADN migrando entre nubes con contenedores
 
 **Materia:** Computación Paralela, Distribuida y en la Nube (PDN), Unidad III: Cloud Computing
-**Proyecto:** P3.x XaaS, defensa de la Semana 09 (individual)
-**Nubes:** americana · china · latinoamericana (Brasil) · ecuatoriana
+**Proyecto:** P3.x XaaS, defensa de la Semana 09 y Evaluación S11 (individual)
+**Nubes (5):** americana · china · latinoamericana (Brasil) · ecuatoriana · europea
 
-Una sola imagen Docker procesa una cadena de ADN y se ejecuta **sin cambios** en cuatro proveedores de nube distintos y en dos modelos de servicio:
+Una sola imagen Docker procesa una cadena de ADN y se ejecuta **sin cambios** en cinco proveedores de nube distintos y en dos modelos de servicio. Se puede usar de dos maneras:
 
-- **IaaS** (Azure, Huawei Cloud y Claro Cloud): se crea una VM, se instala Docker y el contenedor corre en **modo batch** por SSH.
-- **PaaS** (GuaraCloud): la plataforma solo recibe la imagen y la ejecuta en **modo servidor HTTP**. No hay VM ni SSH.
+- **Migración:** la misma imagen se lleva de una nube a otra, y cada nube procesa el genoma completo (secciones 4 y 5).
+- **Clúster distribuido (P4):** las 5 nubes analizan juntas el genoma, repartido en fragmentos. El **líder se elige con etcd** entre las nubes: si la nube líder se cae, otra toma el mando y retoma el trabajo. Las nubes se conectan por una **red privada WireGuard**. Ver **[docs/CLUSTER.md](docs/CLUSTER.md)**.
+
+Hay dos modelos de servicio:
+
+- **IaaS** (AWS, Alibaba Cloud, OVHcloud, DonWeb y Telecu): se crea una VM, se instala Docker y el contenedor corre en **modo batch** por SSH.
+- **PaaS** (opcional, por ejemplo GuaraCloud): la plataforma solo recibe la imagen y la ejecuta en **modo servidor HTTP**. No hay VM ni SSH.
 
 Cada nube devuelve los mismos conteos, y esa coincidencia es la prueba de portabilidad.
 
@@ -27,7 +32,7 @@ Cada nube devuelve los mismos conteos, y esa coincidencia es la prueba de portab
 
 ### Datos: genoma humano de referencia GRCh38.p14
 
-El archivo que entregó el docente (Dropbox "ADN ARN 2025") es el **genoma humano de referencia GRCh38.p14** en formato FASTA (`.fna`, unos 3.11 GB):
+El archivo que entregó el docente (carpeta "ADN ARN 2025" en OneDrive/Dropbox) es el **genoma humano de referencia GRCh38.p14** en formato FASTA (`.fna`, unos 3.11 GB):
 
 - `GCA_000001405.29_GRCh38.p14_genomic.fna`: versión GenBank.
 - `GCF_000001405.40_GRCh38.p14_genomic.fna`: versión RefSeq. Es el mismo ensamblaje, pero con otros nombres de secuencia.
@@ -41,9 +46,15 @@ Qué encontrarás en el resultado:
 | N | Huecos del ensamblaje (centrómeros, telómeros), con millones de N |
 | Inválidos | Códigos IUPAC de ambigüedad (R, Y, M, K…), que son muy pocos |
 
-**Cómo llega el archivo a cada nube:** subir 3 GB desde tu laptop a cuatro nubes sería lento. Por eso cada nube **descarga el archivo directamente** desde el Dropbox del docente con `fetch_dna.py`, usando la conexión del datacenter. El programa calcula el **SHA-256** del archivo descargado, y si coincide en todas las nubes queda demostrado que procesaron exactamente el mismo archivo.
+**Cómo llega el archivo a cada nube:** subir 3 GB desde tu laptop a cinco nubes sería lento. Por eso hay tres caminos, en la pestaña **Datos en las nubes** del dashboard (detalle en `docs/CLUSTER.md`, paso 6):
 
-Para obtener el enlace de un **archivo** (no de la carpeta): en Dropbox, pasa el ratón sobre el archivo, abre el menú **⋯** y elige **Copiar enlace**. El programa convierte `dl=0` en `dl=1` automáticamente.
+1. **Desde un enlace:** cada nube descarga el archivo directamente de **OneDrive/SharePoint** o Dropbox con la conexión del datacenter. El programa convierte el enlace en descarga directa: SharePoint → `download=1`, `1drv.ms` → API `shares`, Dropbox → `dl=1`.
+2. **Subir desde tu PC:** si OneDrive pide iniciar sesión, descarga el archivo y súbelo una sola vez a una nube. Puedes hacerlo desde el navegador o con `scripts/cluster/subir_genoma.sh`.
+3. **Copiar entre nubes:** las demás lo copian desde esa nube por WireGuard.
+
+En todos los casos, el programa calcula el **SHA-256** de la copia de cada nube. Si coincide en todas, queda demostrado que procesaron exactamente el mismo archivo. Si un enlace devuelve una página de inicio de sesión en vez del archivo, se rechaza con un mensaje claro y no se guarda como si fuera ADN.
+
+Para obtener el enlace de un **archivo** (no de la carpeta) en OneDrive, haz clic derecho sobre el archivo, elige **Compartir** y luego **Copiar vínculo**, con el permiso «Cualquier persona con el vínculo».
 
 Si no hay `DNA_URL`, el generador `generate_dna.py` crea ADN sintético **determinista**, que sirve para pruebas rápidas.
 
@@ -58,8 +69,8 @@ Si no hay `DNA_URL`, el generador `generate_dna.py` crea ADN sintético **determ
                                    │ misma imagen
        ┌──────────────┬────────────┼──────────────┬───────────────┐
        ▼              ▼            ▼              ▼               │
-  Azure (EE.UU.)  Huawei (China) Claro (Ecuador)  GuaraCloud (BR) │
-  ── IaaS: VM + docker compose, modo batch ──    ── PaaS ──       │
+  AWS (EE.UU.)  Alibaba (China/SG)  OVH (Europa)  DonWeb (AR) · Telecu (EC)
+  ── IaaS: VM + docker compose, modo batch ──    ── PaaS opc. ──  │
        │  (SSH + scp)  │            │             APP_MODE=server │
        │              │            │             HTTP /run        │
        └──────── results/<nube>/*.json ──────────────┘            │
@@ -72,10 +83,17 @@ Si no hay `DNA_URL`, el generador `generate_dna.py` crea ADN sintético **determ
 ```
 adn-multicloud/
 ├── app/
-│   ├── main.py                # punto de entrada: APP_MODE=batch o server
+│   ├── main.py                # punto de entrada: APP_MODE=batch, server o worker
+│   ├── worker.py              # worker del clúster (puerto 8000, X-Token, todos los núcleos)
+│   ├── coordinador.py         # latido, elección de líder con etcd, reparto y reanudación
+│   ├── etcd_client.py         # cliente etcd v3 sin dependencias (con failover)
+│   ├── etcd_node.py           # arranca un miembro de etcd (APP_MODE=etcd)
+│   ├── cluster_api.py         # API del clúster para el dashboard (lee/escribe etcd)
+│   ├── seqcache.py            # caché del FASTA limpio (.seq) y plan de fragmentos
+│   ├── master.py              # maestro por terminal (modo sin etcd, pruebas)
 │   ├── dna_processor.py       # procesamiento secuencial/paralelo
 │   ├── server.py              # servidor HTTP + API del dashboard (PaaS y local)
-│   ├── web/                   # interfaz gráfica (index.html, app.js, styles.css)
+│   ├── web/                   # interfaz gráfica (index.html, app.js, cluster.js, styles.css)
 │   ├── prepare_data.py        # elige: descargar genoma real o generar sintético
 │   ├── fetch_dna.py           # descarga el genoma (Dropbox/NCBI, .gz) + SHA-256
 │   ├── generate_dna.py        # generador determinista de ADN sintético (FASTA)
@@ -86,7 +104,22 @@ adn-multicloud/
 │   ├── bootstrap_vm.sh        # instala Docker en una VM nueva (cloud-init)
 │   ├── deploy_remote.sh       # despliega y ejecuta en UNA VM por SSH (IaaS)
 │   ├── run_paas.sh            # ejecuta y descarga resultados por HTTP (PaaS)
-│   └── migrate_all.sh         # migra a todas las VMs y compara
+│   ├── migrate_all.sh         # migra a todas las VMs y compara
+│   └── cluster/
+│       ├── wireguard_malla.sh     # red privada WireGuard 10.99.0.x entre las 5 nubes
+│       ├── desplegar_cluster.sh   # instala adn-etcd + adn-nodo en cada nube
+│       ├── instalar_nodo.sh       # (se ejecuta dentro de cada nube)
+│       ├── migrar_imagen.sh       # migración en vivo: docker save | gzip | ssh | docker load
+│       ├── conectar.sh            # túnel SSH → http://localhost:8080/#cluster
+│       ├── subir_genoma.sh        # sube el FASTA desde la PC a una nube y lo replica a las demás
+│       ├── nube.sh                # estado, apagar/encender de verdad, logs
+│       └── prueba_local.sh        # prueba completa en una máquina (también en el CI)
+├── cluster/
+│   └── nubes.conf.example     # las 5 nubes: IP, puerto SSH, IP privada, proveedor, precios
+├── docs/
+│   ├── CLUSTER.md             # guía del clúster en 5 nubes (etcd + WireGuard)
+│   ├── COMANDOS_DOCKER.md     # build, run, ps, stop, start, rm, rmi, logs, exec, stats, save/load
+│   └── EVALUACION_S11.md      # respuestas de la evaluación con evidencias del proyecto
 ├── .github/workflows/
 │   └── docker-publish.yml     # pipeline CI/CD (test, build, push, deploy)
 ├── Dockerfile
@@ -162,7 +195,7 @@ La sección Multicloud lee automáticamente `results/` y sus subcarpetas `result
 
 ### Paso 3: Crear una VM en cada nube
 
-En las tres nubes IaaS (Azure, Huawei y Claro) harás lo mismo. GuaraCloud tiene su propio paso (4B).
+En las 5 nubes (AWS, Alibaba Cloud, OVHcloud, DonWeb y Telecu) harás lo mismo. Para el **clúster con etcd** sigue después **[docs/CLUSTER.md](docs/CLUSTER.md)**. El paso 4B (PaaS) es opcional.
 
 1. Crea una VM con **Ubuntu 22.04 o 24.04**, de 1 a 2 vCPU y de 1 a 4 GB de RAM.
 2. Descarga o crea la **llave SSH**.
@@ -171,20 +204,19 @@ En las tres nubes IaaS (Azure, Huawei y Claro) harás lo mismo. GuaraCloud tiene
 
 Opcionalmente, pega `scripts/bootstrap_vm.sh` en el campo *User data* o *cloud-init* para que Docker quede instalado al arrancar la VM.
 
-| Nube | Proveedor | Cómo obtenerlo | Recurso |
+| Nube | Proveedor | Cómo obtenerlo | Recurso de referencia |
 |---|---|---|---|
-| 🇺🇸 Americana | **Microsoft Azure** (Azure for Students) | Registro con el correo institucional. Da USD 100 de crédito por 12 meses sin tarjeta | `Standard_B1s` o `B2s`, región `eastus` |
-| 🇨🇳 China | **Huawei Cloud** (internacional) | Paquete gratuito de 12 meses para cuentas nuevas. Pide registrar un método de pago | `s6.medium.2`, región **LA-Santiago** o **LA-Mexico City1** (menor latencia desde Ecuador) |
-| 🇧🇷 Latinoamericana | **GuaraCloud** (PaaS brasileña, servidores en São Paulo) | Inicio de sesión con GitHub o Google en guaracloud.com. Cobra en reales | Servicio desde imagen Docker (no es VM) |
-| 🇪🇨 Ecuatoriana | **Claro Cloud Empresarial** (América Móvil, datacenter en Ecuador) | Compra en línea en clarocloud.com.ec. Cobra por uso: USD 0.0125 por vCPU/hora y USD 0.0069 por GB de RAM/hora | 2 vCPU y 4 GB, con Ubuntu |
+| 🇺🇸 Americana (`usa`) | **AWS** (us-east-2 Ohio) | Cuenta nueva con el plan gratuito: US$ 100 al registrarse y hasta US$ 100 más por usar servicios, durante 6 meses | `m7i-flex.large` (2 vCPU, 8 GB) |
+| 🇨🇳 China (`china`) | **Alibaba Cloud** (internacional, ap-southeast-1 Singapur) | Cuenta internacional con tarjeta. Las regiones de China continental exigen trámites (ICP), por eso se usa la región internacional más cercana. **Anota la ubicación real** | `ecs.c9i.xlarge` (4 vCPU) o uno menor |
+| 🇪🇺 Europea (`europa`) | **OVHcloud** (DE1 Fráncfort) | Public Cloud con US$ 200 de crédito y cobro por hora. El tráfico de salida está incluido (1 TB al mes por proyecto) | `b3-16` (4 vCPU, 16 GB) o `d2-4` |
+| 🌎 Latinoamericana (`latam`) | **DonWeb** (Argentina) | Cloud Server con cuota mensual (precio **estimado** en el informe). Su SSH puede usar otro puerto (p. ej. 5349) | 1 vCPU, 1 GB |
+| 🇪🇨 Ecuatoriana (`ecuador`) | **Telecu Cloud** (Quito) | VPS en Ecuador: TPX01 (1 vCPU, 1 GB, 20 GB SSD, 10 TB de tráfico) desde US$ 10 al mes | `TPX01` o `TPX11` |
 
 **Notas importantes por proveedor**
 
-- **Azure:** si antes activaste la prueba gratuita normal con el mismo correo, es posible que ya no puedas usar Azure for Students.
-- **Huawei Cloud:** el paquete gratuito aplica solo a imágenes Linux. Las cuentas registradas en Brasil, Perú o Chile no son elegibles, pero una cuenta de Ecuador sí debería serlo.
-- **GuaraCloud:** se eligió en lugar de Magalu Cloud, que no permitió activar la cuenta. Incluye en el informe la captura del bloqueo de Magalu como justificación. GuaraCloud es una **PaaS**: según su autor, corre sobre infraestructura de Linode/Akamai en São Paulo. Discute esto en el análisis: la empresa y la facturación son brasileñas, pero el hardware es de un proveedor estadounidense.
-- **Claro Cloud (Ecuador):** es uno de los proveedores ecuatorianos del documento. Se compra en línea, Claro valida los datos y envía por correo el acceso al panel. Como cobra por uso, una VM de 2 vCPU y 4 GB encendida unas 10 horas cuesta menos de USD 1, más unos USD 2.40 al mes por un disco de 30 GB. Antes de comprar, confirma con Claro (sop.tec.empresa.ec@claro.com.ec, 04 500-500) si aceptan persona natural con cédula y qué formas de pago admiten. Si Claro no es viable, las alternativas de la misma lista son Telconet o CNT, pero ambas se contratan por cotización comercial.
-- Usuario SSH por defecto: Azure usa `azureuser`, Huawei usa `root`. En Claro, revísalo en el panel al crear la VM.
+- **Precios:** cópialos de **tu** panel a `cluster/nubes.conf`. El dashboard calcula con ellos el costo por transacción.
+- **WireGuard:** abre **UDP 51820** en el firewall de cada nube. Si un VPS mensual (DonWeb, Telecu) es un contenedor sin módulos del kernel, usa `wireguard-go` (ver docs/CLUSTER.md).
+- **Usuario SSH:** AWS (Ubuntu) usa `ubuntu`; Alibaba, `root`; OVH, `ubuntu`. En DonWeb y Telecu, el que indique el panel.
 
 📸 **Evidencia:** captura de cada consola con la VM creada, mostrando la región y el tipo de VM.
 
@@ -201,15 +233,15 @@ export WORKERS=0               # 0 = todos los núcleos de la VM
 chmod +x scripts/*.sh
 chmod 600 ~/.ssh/*.pem
 
-# Ejemplo: Azure
-scripts/deploy_remote.sh azure azureuser@IP_AZURE ~/.ssh/azure.pem "EE.UU." eastus Standard_B1s
+# Ejemplo: AWS
+scripts/deploy_remote.sh usa ubuntu@IP_USA ~/.ssh/aws.pem "EE.UU." us-east-2 m7i-flex.large
 ```
 
-El script hace todo solo: copia el compose, instala Docker si hace falta, descarga la **misma** imagen, descarga el genoma en la nube, lo procesa y trae el JSON a `results/azure/`. También trae el SHA-256 y el tiempo de descarga del genoma.
+El script hace todo solo: copia el compose, instala Docker si hace falta, descarga la **misma** imagen, descarga el genoma en la nube, lo procesa y trae el JSON a `results/usa/`. También trae el SHA-256 y el tiempo de descarga del genoma.
 
 **Requisitos de la VM para el genoma completo:** al menos **8 GB de disco libre** (el archivo ocupa 3.1 GB) y 1 GB de RAM o más. Con 1 GB de RAM usa `WORKERS=1` o `CHUNK_MB=16`.
 
-Para migrar a las tres VMs de una sola vez:
+Para migrar a las cuatro VMs de una sola vez:
 
 ```bash
 cp clouds.env.example clouds.env   # completa las IPs, usuarios y llaves reales
@@ -218,7 +250,7 @@ scripts/migrate_all.sh
 
 `migrate_all.sh` también registra cuánto tardó el despliegue en cada nube, en `results/deploy_times.csv`.
 
-### Paso 4B: Desplegar en GuaraCloud (PaaS)
+### Paso 4B (opcional): Desplegar en una PaaS (por ejemplo, GuaraCloud)
 
 En una PaaS no hay VM ni SSH. La plataforma descarga la imagen y la mantiene encendida, así que se usa la **misma imagen** en modo servidor:
 
@@ -259,7 +291,7 @@ Este comando genera lo siguiente en `results/`:
 
 ### Paso 6: Apagar y borrar las VMs
 
-Cuando termines y guardes las evidencias, **elimina las VMs, los discos y las IPs públicas** en Azure, Huawei y Claro, y el servicio en GuaraCloud, para no consumir crédito ni recibir cobros.
+Cuando termines y guardes las evidencias, **elimina las VMs, los discos y las IPs públicas** en AWS, Alibaba, OVHcloud, DonWeb y Telecu (y el servicio PaaS si lo usaste), para no consumir crédito ni recibir cobros.
 
 ---
 

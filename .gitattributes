@@ -1,0 +1,5 @@
+# Los scripts corren en Linux (VMs y contenedores): siempre con saltos de línea LF
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.png binary

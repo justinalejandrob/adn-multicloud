@@ -24,7 +24,9 @@ Solo usa la biblioteca estándar de Python (sin dependencias extra).
 
 from __future__ import annotations
 
+import base64
 import glob
+import hmac
 import json
 import mimetypes
 import os
@@ -45,6 +47,7 @@ SIZE_RE = re.compile(r"^\d+(\.\d+)?(B|KB|MB|GB)$", re.IGNORECASE)
 PROGRESS_RE = re.compile(r"^@@progress (\S+):(\d+) (\d+) (\d+)$")
 DOWNLOAD_RE = re.compile(r"descargado ([\d,.]+) MB\s*([\d.]+)?\s*%?.*?escrito ([\d,.]+) MB.*?([\d,.]+) MB/s")
 GENERATE_RE = re.compile(r"generado ([\d,.]+) / ([\d,.]+) MB")
+DASH_PASS = os.getenv("DASH_PASS", "")
 STARTED_AT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 STATE = {"status": "idle", "phase": None, "progress": None, "started": None,
@@ -252,8 +255,11 @@ def info() -> dict:
 # ---------------------------------------------------------------------------
 # HTTP
 # ---------------------------------------------------------------------------
+sys.path.insert(0, APP_DIR)
+import cluster_api  # noqa: E402  (API del clúster: maestro que reparte a las nubes)
+
 STATIC = {"/": "index.html", "/index.html": "index.html",
-          "/app.js": "app.js", "/styles.css": "styles.css"}
+          "/app.js": "app.js", "/cluster.js": "cluster.js", "/styles.css": "styles.css"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -269,9 +275,51 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def auth_ok(self) -> bool:
+        """Clave opcional del dashboard (DASH_PASS, usuario "adn"). /health queda libre."""
+        if not DASH_PASS or urlparse(self.path).path == "/health":
+            return True
+        expected = "Basic " + base64.b64encode(f"adn:{DASH_PASS}".encode()).decode()
+        if hmac.compare_digest(self.headers.get("Authorization", ""), expected):
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="ADN Multinube"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
+    def do_POST(self):  # noqa: N802
+        if not self.auth_ok():
+            return
+        url = urlparse(self.path)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = -1
+        if length < 0:
+            self.send(411, {"error": "Content-Length requerido"})
+            return
+        if url.path == "/api/subir":
+            code, body = receive_upload(self, parse_qs(url.query), length)
+            self.send(code, body)
+            return
+        if url.path.startswith("/api/cluster/") or url.path in ("/api/ejecutar", "/api/cancelar"):
+            if length > 1024 * 1024:
+                self.send(413, {"error": "cuerpo demasiado grande"})
+                return
+            code, body = cluster_api.handle_post(url.path, parse_qs(url.query), self.rfile.read(length))
+        else:
+            code, body = 404, {"error": "no encontrado"}
+        self.send(code, body)
+
     def do_GET(self):  # noqa: N802
+        if not self.auth_ok():
+            return
         url = urlparse(self.path)
         path = url.path
+        if path in ("/api/cluster/estado", "/api/estado"):
+            self.send(200, cluster_api.estado())
+            return
         if path == "/health":
             self.send(200, "ok", "text/plain")
         elif path == "/run":
@@ -313,19 +361,80 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ""
-        if not any(p in first for p in ("/health", "/api/state", "/status")):
+        if not any(p in first for p in ("/health", "/api/state", "/status", "/api/cluster/estado")):
             sys.stderr.write("[http] " + fmt % args + "\n")
 
 
+def receive_upload(handler, query: dict, length: int):
+    """POST /api/subir?archivo=NOMBRE  (cuerpo = el FASTA tal cual).
+
+    El archivo llega a la nube a la que está conectado el navegador (por el túnel
+    SSH) y se escribe en /datos por bloques de 4 MB: nunca se carga entero en RAM.
+    Después se prepara (.seq + SHA-256) y desde la pestaña «Datos» se replica a
+    las demás nubes por WireGuard."""
+    import shutil  # noqa: PLC0415
+    import worker as W  # noqa: PLC0415
+    name = (query.get("archivo") or [""])[0].strip()
+    if not W.FILE_RE.match(name):
+        return 400, {"error": "nombre inválido: use letras, números, . _ - y extensión .fna .fa .fasta .fas .txt"}
+    if length <= 0:
+        return 411, {"error": "Content-Length requerido"}
+    if not os.path.isdir(W.DATA_DIR):
+        return 503, {"error": f"esta instancia no tiene carpeta de datos ({W.DATA_DIR})"}
+    free = shutil.disk_usage(W.DATA_DIR).free
+    need = int(length * 2.1)  # el archivo + su caché .seq limpia
+    if free < need:
+        return 507, {"error": f"disco insuficiente en {W.NODE_NAME}: hay {free / 1024**3:.1f} GB "
+                              f"libres y se necesitan ≈ {need / 1024**3:.1f} GB (archivo + caché)"}
+    final = os.path.join(W.DATA_DIR, name)
+    tmp = final + ".subiendo"
+    got, t0 = 0, time.time()
+    W.FILE_STATE[name] = {"estado": "subiendo", "recibido": 0, "total": length}
+    try:
+        with open(tmp, "wb") as out:
+            while got < length:
+                chunk = handler.rfile.read(min(4 * 1024 * 1024, length - got))
+                if not chunk:
+                    break
+                out.write(chunk)
+                got += len(chunk)
+                W.FILE_STATE[name] = {"estado": "subiendo", "recibido": got, "total": length,
+                                      "mb_s": round(got / 1024**2 / max(time.time() - t0, 1e-3), 1)}
+        if got != length:
+            raise OSError(f"subida incompleta ({got} de {length} bytes)")
+        os.replace(tmp, final)
+    except OSError as exc:
+        W.FILE_STATE[name] = {"estado": "error", "error": str(exc)[:200]}
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return 500, {"error": str(exc)}
+    threading.Thread(target=W.prepare_file, args=(final,), daemon=True).start()
+    secs = time.time() - t0
+    return 201, {"mensaje": f"{name} recibido en {W.NODE_NAME} ({got / 1024**2:,.0f} MB en {secs:,.0f} s); "
+                            "preparando la caché", "nodo": W.NODE_NAME, "bytes": got, "segundos": round(secs, 1)}
+
+
+def make_server(port: int, bind: str = "0.0.0.0") -> ThreadingHTTPServer:
+    for d in (os.path.dirname(DNA_FILE) or ".", OUTPUT_DIR):
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError:
+            pass
+    srv = ThreadingHTTPServer((bind, port), Handler)
+    srv.daemon_threads = True
+    return srv
+
+
 def main() -> int:
-    os.makedirs(os.path.dirname(DNA_FILE) or ".", exist_ok=True)
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
     port = int(os.getenv("PORT", "8080"))
+    cluster_api.init()    # si hay ETCD_ENDPOINTS (p. ej. por túnel SSH), muestra el clúster
     if os.getenv("AUTO_RUN", "false").lower() == "true":
         start_job({})
     print(f"Dashboard ADN en http://localhost:{port} "
           f"(nube: {os.getenv('CLOUD_PROVIDER', 'local')})", flush=True)
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    make_server(port, os.getenv("DASH_BIND", "0.0.0.0")).serve_forever()
     return 0
 
 

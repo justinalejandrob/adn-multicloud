@@ -34,6 +34,10 @@ const ICONS = {
   loader: '<path d="M12 3a9 9 0 1 0 9 9"/>',
   server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  network: '<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-2.5h14V17M12 12v2.5"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
+  dollar: '<path d="M12 2v20M17 6.5c-1-1.5-3-2-5-2-3 0-4.5 1.5-4.5 3.5 0 4.5 10 2.5 10 7.5 0 2-2 3.5-5 3.5-2.5 0-4.5-1-5.5-2.5"/>',
 };
 function iconSVG(name, size = 18) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ""}</svg>`;
@@ -115,8 +119,15 @@ const PROVIDERS = {
   magalu: { label: "Magalu Cloud", model: "IaaS", flag: "Brasil" },
   claro: { label: "Claro Cloud", model: "IaaS", flag: "Ecuador" },
   local: { label: "Laptop (local)", model: "Local", flag: "Ecuador" },
+  ovhcloud: { label: "OVHcloud", model: "IaaS", flag: "Francia" },
+  ovh: { label: "OVHcloud", model: "IaaS", flag: "Francia" },
+  hetzner: { label: "Hetzner", model: "IaaS", flag: "Alemania" },
+  scaleway: { label: "Scaleway", model: "IaaS", flag: "Francia" },
+  lightnode: { label: "LightNode", model: "IaaS", flag: "—" },
+  donweb: { label: "DonWeb", model: "IaaS", flag: "Argentina" },
+  telecu: { label: "Telecu Cloud", model: "IaaS", flag: "Ecuador" },
 };
-const PROVIDER_ORDER = ["azure", "aws", "huawei", "alibaba", "guaracloud", "magalu", "claro", "local"];
+const PROVIDER_ORDER = ["aws", "azure", "ovhcloud", "ovh", "alibaba", "huawei", "donweb", "guaracloud", "magalu", "telecu", "claro", "hetzner", "scaleway", "local"];
 const providerLabel = (p) => (PROVIDERS[p] && PROVIDERS[p].label) || p;
 const providerModel = (p) => (PROVIDERS[p] && PROVIDERS[p].model) || "IaaS";
 /** El color sigue al proveedor (no a su posición en un gráfico filtrado). */
@@ -142,6 +153,7 @@ const VIEWS = {
   adn: { title: "Procesamiento ADN", sub: "Tamaño del archivo, patrón, bloques y resultados", icon: "dna" },
   rendimiento: { title: "Rendimiento", sub: "Comparación secuencial vs. paralelo y tiempos", icon: "gauge" },
   multicloud: { title: "Multicloud", sub: "Comparación de proveedores, CPU, RAM y rendimiento", icon: "cloud" },
+  cluster: { title: "Clúster", sub: "5 nubes · líder elegido con etcd · red privada WireGuard", icon: "network" },
 };
 
 const resultKey = (r) => `${r.environment.cloud_provider}|${r.environment.timestamp_utc}|${r.input.size_bytes}`;
@@ -260,7 +272,7 @@ function barChart(container, opts) {
   const W = Math.max(280, container.clientWidth || 560), H = opts.height || 250;
   const m = { l: 46, r: 8, t: 22, b: 34 };
   const iw = W - m.l - m.r, ih = H - m.t - m.b;
-  const ymax = niceMax(Math.max(...values) * 1.08);
+  const ymax = niceMax(Math.max(...values, opts.ref ? opts.ref.value : 0) * 1.08);
   const y = (v) => m.t + ih - (v / ymax) * ih;
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label || "Gráfico de barras" });
 
@@ -291,12 +303,17 @@ function barChart(container, opts) {
       hit.addEventListener("pointerleave", () => { p.classList.remove("hover"); hideTip(); });
       hit.addEventListener("blur", () => { p.classList.remove("hover"); hideTip(); });
       root.append(p);
-      if (showLabels) root.append(svg("text", { x: x + bw / 2, y: top - 6, "text-anchor": "middle", class: "value-label", text: fmt(v) }));
+      if (showLabels && fmt(v).length * 6.6 <= band / n + gap) root.append(svg("text", { x: x + bw / 2, y: top - 6, "text-anchor": "middle", class: "value-label", text: fmt(v) }));
       root.append(hit);
     });
     const label = cat.length > 18 ? `${cat.slice(0, 17)}…` : cat;
     root.append(svg("text", { x: m.l + band * ci + band / 2, y: H - 12, "text-anchor": "middle", text: label }));
   });
+  if (opts.ref) {   // línea de referencia (p. ej. el límite de 15 ms de un SLA)
+    const yy = y(opts.ref.value);
+    root.append(svg("line", { x1: m.l, x2: W - m.r, y1: yy, y2: yy, "stroke-width": 1.5, "stroke-dasharray": "6 4", style: { stroke: "var(--ink-2)" } }));
+    root.append(svg("text", { x: W - m.r, y: yy - 6, "text-anchor": "end", class: "value-label", text: opts.ref.label }));
+  }
   container.append(root);
 }
 
@@ -914,7 +931,8 @@ function setView(name) {
   renderView();
 }
 function renderView() {
-  ({ panel: renderPanel, adn: renderAdn, rendimiento: renderPerf, multicloud: renderMulticloud })[S.view]();
+  ({ panel: renderPanel, adn: renderAdn, rendimiento: renderPerf, multicloud: renderMulticloud, cluster: renderCluster })[S.view]();
+  clusterVisible(S.view === "cluster");
 }
 function renderAll() { renderChrome(); renderView(); }
 /** Actualización liviana durante el sondeo (sin redibujar gráficos). */

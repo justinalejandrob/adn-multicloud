@@ -34,6 +34,18 @@ jobs:
         run: |
           python generate_dna.py --size 4MB --output ../data/adn.txt
           python dna_processor.py --input ../data/adn.txt --mode both --workers 2
+      - name: Prueba del clúster (2 workers locales; debe ser idéntico a 1 núcleo)
+        working-directory: app
+        env:
+          CLUSTER_TOKEN: ci-token
+        run: |
+          NODE_NAME=w1 WORKER_PORT=8101 python worker.py &
+          NODE_NAME=w2 WORKER_PORT=8102 python worker.py &
+          sleep 4
+          printf "w1=http://127.0.0.1:8101\nw2=http://127.0.0.1:8102\n" > /tmp/nodes.txt
+          python master.py --nodes /tmp/nodes.txt --input ../data/adn.txt --chunk-mb 1
+      - name: Prueba del clúster con etcd (3 nubes simuladas; se mata al líder a mitad del trabajo)
+        run: bash scripts/cluster/prueba_local.sh
 
   build-push:
     needs: test

@@ -27,6 +27,7 @@
       <a href="#adn" data-view="adn"><i data-icon="dna"></i><span>Procesamiento ADN</span></a>
       <a href="#rendimiento" data-view="rendimiento"><i data-icon="gauge"></i><span>Rendimiento</span></a>
       <a href="#multicloud" data-view="multicloud"><i data-icon="cloud"></i><span>Multicloud</span></a>
+      <a href="#cluster" data-view="cluster"><i data-icon="network"></i><span>Clúster</span></a>
     </nav>
     <div class="sidebar-foot">
       <div class="cloud-chip">
@@ -186,9 +187,54 @@
         <div class="table-wrap" id="mc-table"></div>
       </div>
     </section>
+    <!-- ========== 5. Clúster (líder elegido con etcd + WireGuard entre 5 nubes) ========== -->
+    <section data-section="cluster" class="hidden">
+      <div id="cl-setup"></div>
+      <!-- barra de mando -->
+      <div class="card cl-bar" id="cl-bar">
+        <div class="cl-status" id="cl-status"></div>
+        <form class="cl-controls" id="cl-form" novalidate>
+          <label class="cl-inline">Patrones
+            <input id="cl-patrones" type="text" value="TATAAA,GAATTC" spellcheck="false" autocomplete="off" aria-label="Patrones separados por coma"></label>
+          <button class="btn primary" type="submit" id="cl-run"><i data-icon="play"></i><span id="cl-run-label">Analizar</span></button>
+          <button class="btn" type="button" id="cl-cancel"><i data-icon="stop"></i>Cancelar</button>
+          <button class="btn" type="button" id="cl-net-btn"><i data-icon="zap"></i>Medir red</button>
+          <label class="cl-inline">Ceder mando a
+            <select id="cl-ceder-sel" aria-label="Nube que tomará el mando"></select></label>
+          <button class="btn" type="button" id="cl-ceder">Ceder</button>
+          <button class="btn" type="button" id="cl-adv-btn" aria-expanded="false">Opciones</button>
+        </form>
+        <div class="cl-adv hidden" id="cl-adv"></div>
+      </div>
+      <!-- 5 nubes -->
+      <div class="cl-nodes" id="cl-nodes"></div>
+      <!-- mapa de fragmentos -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-head" style="margin-bottom:10px">
+          <div><h2 class="card-title" id="cl-frag-title">Fragmentos</h2><p class="card-sub" id="cl-frag-sub">sin trabajo en curso</p></div>
+          <div class="legend" id="cl-legend" style="margin:0"></div>
+        </div>
+        <div class="cl-frags" id="cl-frags"></div>
+        <div class="cl-summary" id="cl-summary"></div>
+      </div>
+      <!-- pestañas -->
+      <div class="card" style="margin-top:16px">
+        <div class="tabs" role="tablist" id="cl-tabs">
+          <button role="tab" data-tab="comparacion">Comparación por nube</button>
+          <button role="tab" data-tab="costo">Costo por transacción</button>
+          <button role="tab" data-tab="tiempo">Línea de tiempo</button>
+          <button role="tab" data-tab="red">Red entre nubes</button>
+          <button role="tab" data-tab="datos">Datos en las nubes</button>
+          <button role="tab" data-tab="historial">Historial</button>
+          <button role="tab" data-tab="eventos">Eventos</button>
+        </div>
+        <div id="cl-tab-body" style="margin-top:16px"></div>
+      </div>
+    </section>
   </main>
 </div>
 <div id="tooltip" class="hidden" role="tooltip"></div>
+<script src="/cluster.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
