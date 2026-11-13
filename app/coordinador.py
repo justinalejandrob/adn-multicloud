@@ -37,7 +37,8 @@ K_APAGADO, K_CMD, K_TRABAJO, K_FRAG = P + "apagado/", P + "comandos/", P + "trab
 K_HIST, K_EVT, K_RED, K_MEDIR = P + "historial/", P + "eventos/", P + "red/", P + "medir_red"
 K_CANCEL, K_DESCARGAS = P + "cancelar", P + "descargas/"
 
-NODE_TTL, LEADER_TTL = 10, 6
+NODE_TTL, LEADER_TTL = 20, 6
+ALIVE_S = 15   # sin latido por más de esto = nube caída (red intercontinental: 100-350 ms por llamada)
 MAX_EVENTS = 300
 
 
@@ -89,7 +90,7 @@ class Coordinator:
                 if not self.node_lease or not self.etcd.keepalive(self.node_lease):
                     self.node_lease = self.etcd.grant(NODE_TTL)
                 was = self.apagado
-                self.apagado = self.etcd.get(K_APAGADO + self.name) is not None
+                self.apagado = self.etcd.get(K_APAGADO + self.name, serial=True) is not None
                 W.OFFLINE = self.apagado
                 if self.apagado != was:
                     event(self.etcd, self.name, "apagado" if self.apagado else "encendido",
@@ -106,7 +107,7 @@ class Coordinator:
                     "uptime": round(time.time() - W.STARTED)}, lease=self.node_lease)
                 self._handle_downloads(files)
                 self._prepare_pending(files)
-                req = self.etcd.get(K_MEDIR)
+                req = self.etcd.get(K_MEDIR, serial=True)
                 if req and req != self.last_measure_req:
                     self.last_measure_req = req
                     threading.Thread(target=self.measure_network, daemon=True).start()
@@ -129,7 +130,7 @@ class Coordinator:
         tried = self.__dict__.setdefault("_dl_src", {})
         have = {f["nombre"] for f in files
                 if not (f.get("estado") == "error" and not f.get("bytes"))}
-        for key, src in self.etcd.get_prefix(K_DESCARGAS, as_json=False).items():
+        for key, src in self.etcd.get_prefix(K_DESCARGAS, as_json=False, serial=True).items():
             name, src = key[len(K_DESCARGAS):], str(src)
             if name in have or not W.FILE_RE.match(name) or tried.get(name) == src:
                 continue
@@ -193,10 +194,10 @@ class Coordinator:
 
     # ================================================================ elección
     def _alive_nodes(self) -> dict:
-        """Nodos con latido reciente (< 7 s). Un nodo que murió de golpe deja de
-        contar antes de que su lease de 10 s expire en etcd."""
-        nodes = self.etcd.get_prefix(K_NODOS)
-        limit = time.time() - 7
+        """Nodos con latido reciente (< ALIVE_S). Un nodo que murió de golpe deja de
+        contar antes de que su lease de NODE_TTL s expire en etcd."""
+        nodes = self.etcd.get_prefix(K_NODOS, serial=True)
+        limit = time.time() - ALIVE_S
         return {k[len(K_NODOS):]: v for k, v in nodes.items()
                 if isinstance(v, dict) and float(v.get("visto") or 0) >= limit}
 
@@ -244,13 +245,13 @@ class Coordinator:
             return
         if time.time() < self.cooldown_until:
             return
-        current = self.etcd.get(K_LIDER, as_json=False)
+        current = self.etcd.get(K_LIDER, as_json=False, serial=True)  # la txn create decide
         if current:
             self.vacancy_since = None
             return
         if self.vacancy_since is None:
             self.vacancy_since = time.time()
-        target = self.etcd.get(K_CEDER, as_json=False)
+        target = self.etcd.get(K_CEDER, as_json=False, serial=True)
         if target == self.name:
             delay = 0
         else:

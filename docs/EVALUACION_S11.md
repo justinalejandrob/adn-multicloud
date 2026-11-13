@@ -1,6 +1,6 @@
 # Evaluación S11: Cloud Computing y Sistemas Distribuidos
 
-Las respuestas se apoyan en dos fuentes: información verificada (ver **Fuentes** al final) y **evidencia medida con este proyecto**. El proyecto es un clúster de ADN que corre la misma imagen Docker en 5 nubes: EE. UU. (AWS, Ohio), China (Alibaba Cloud, región internacional de Singapur), Europa (OVHcloud, Fráncfort), Latinoamérica (DonWeb, Argentina) y Ecuador (Telecu, Quito). El líder del clúster se elige con etcd y las nubes se comunican por una red privada WireGuard.
+Las respuestas se apoyan en dos fuentes: información verificada (ver **Fuentes** al final) y **evidencia medida con este proyecto**. El proyecto es un clúster de ADN que corre la misma imagen Docker en 5 nubes: EE. UU. (AWS, Ohio), China (Huawei Cloud, Hong Kong), Europa (OVHcloud, Fráncfort), Latinoamérica (DonWeb, Argentina) y Ecuador (Telecu Cloud, Guayaquil). El líder del clúster se elige con etcd y las nubes se comunican por una red privada WireGuard.
 
 > **Antes de presentar:** completa las tablas marcadas con 📏 usando tus propias mediciones. Están en el dashboard, sección **Clúster → Medir red** y **Resultado del trabajo**, y en `results/red_*.json` y `results/cluster_*.json`.
 
@@ -24,14 +24,14 @@ Las respuestas se apoyan en dos fuentes: información verificada (ver **Fuentes*
 
 **Recomendación:** el microservicio de autorizaciones debe correr en el DC local TIER III, que es donde se cumple el RTT. El hiperescalar se puede usar para lo que tolera latencia: analítica, respaldo y recuperación ante desastres.
 
-📏 **Evidencia del proyecto:** en la pestaña **Red entre nubes** del dashboard, cada nube mide su **latencia (RTT, en ms)** y su **velocidad de transferencia (MB/s)** hacia las otras por WireGuard. La fila **ECUADOR** (Telecu, en Quito) responde exactamente esta pregunta: es la latencia desde un servidor en Quito hacia un hiperescalar en EE. UU. y hacia las demás regiones. Los valores menores a 15 ms se marcan con ✓.
+📏 **Evidencia del proyecto:** en la pestaña **Red entre nubes** del dashboard, cada nube mide su **latencia (RTT, en ms)** y su **velocidad de transferencia (MB/s)** hacia las otras por WireGuard. Los valores menores a 15 ms se marcan con ✓. La fila **ECUADOR** (Telecu, en Ecuador) da la latencia desde un servidor del país hacia las demás regiones. Además, desde la PC del estudiante en Quito se mide el `ping` hacia la IP pública de cada nube.
 
-| Desde ECUADOR (Quito) hacia | Ubicación | RTT medido (ms) | ¿< 15 ms? | Transferencia (MB/s) |
+| Desde la PC en Quito hacia | Ubicación | RTT medido (ms) | ¿< 15 ms? | Transferencia (MB/s) |
 |---|---|---|---|---|
 | usa | AWS, Ohio (EE. UU.) | … | … | … |
 | latam | DonWeb, Argentina | … | … | … |
 | europa | OVHcloud, Fráncfort | … | … | … |
-| china | Alibaba, Singapur | … | … | … |
+| china | Huawei Cloud, Hong Kong | … | … | … |
 
 La conclusión esperada es que ninguna región fuera de Ecuador queda por debajo de 15 ms. Para el umbral del banco, solo sirve un servidor dentro del país.
 
@@ -55,7 +55,19 @@ La conclusión esperada es que ninguna región fuera de Ecuador queda por debajo
 
 **Recomendación:** usar la **nube estatal ecuatoriana (CNT EP) o un DC nacional certificado** para los registros ciudadanos. Las opciones b y c quedan solo para datos anonimizados o no personales, o con cláusulas contractuales, cifrado propio y registro ante la SPDP.
 
-📏 **Evidencia del proyecto:** el clúster tiene la opción **Opciones → Soberanía de datos: «Solo nubes en Ecuador»**. El líder reparte los fragmentos solo a la nube de Telecu (Quito): el mismo trabajo se ejecuta sin que ningún dato salga del país, y el resultado es idéntico. Es la demostración práctica de que la soberanía se puede **aplicar como política** en la orquestación.
+📏 **Evidencia del proyecto (hallazgo real):**
+- Durante el montaje se probó primero un VPS facilitado por un tercero y presentado como «ecuatoriano». Al verificarlo técnicamente, resultó estar en **Canadá**:
+  - `curl ipinfo.io` desde el propio servidor: IP `51.161.124.237`, **AS16276 OVH SAS, Beauharnois (Quebec)**.
+  - Registro de la IP en **ARIN** (Norteamérica), no en LACNIC.
+  - `ping` desde Quito: **111 ms** mínimo. Un servidor en Ecuador responde en menos de 15 ms.
+  - `tracert`: la ruta sale del país en el salto 7 (de 7 a 70 ms) y termina en rangos de OVH Canadá.
+- Por eso se reemplazó por un VPS **TPX11 de Telecu Cloud** con geolocalización Ecuador, y se repitieron las mismas pruebas:
+  - `curl ipinfo.io`: IP `205.235.2.2`, **AS23246 GIGAIPNET** (la red propia de Telecu), **Guayaquil, Ecuador**.
+  - `ping` desde Quito: **13 ms** mínimo (17 ms de promedio), frente a 111 ms del VPS de prueba en Canadá.
+  - `tracert`: 10 saltos, todos dentro de redes ecuatorianas, sin salida internacional.
+- Es decir, **la etiqueta «servidor ecuatoriano» no garantiza que los datos queden en Ecuador**: hay que comprobarlo. Si los datos personales se procesan fuera del país, para la LOPDP es una **transferencia internacional**, con las obligaciones descritas arriba.
+- Por eso, en el clúster el filtro **Opciones → Soberanía de datos** usa el país donde está **físicamente** el servidor, no la nacionalidad del proveedor. La lista ofrece solo los países reales («Solo servidores en Canadá», «Solo servidores en Alemania»…), y el líder reparte los fragmentos únicamente a esas nubes, con resultado idéntico.
+- **Lección para la institución:** exigir en el contrato la **ubicación física** del centro de datos y verificarla técnicamente (IP, sistema autónomo, latencia), no solo la razón social del proveedor.
 
 ---
 
@@ -137,12 +149,14 @@ La conclusión esperada es que ninguna región fuera de Ecuador queda por debajo
 - **Lo que funcionó:** una sola imagen, el mismo código y solo variables de entorno distintas (`NODE_NAME`, país, costo) en las 5 nubes. La **migración en vivo** (`docker save | gzip | ssh | docker load`) mueve la aplicación sin reescribirla, y el resultado es idéntico en todas.
 - **Dónde aparece el lock-in real**, aun con contenedores:
   - En la **gestión de cuentas**: Magalu Cloud no permitió activar la cuenta sin un documento brasileño.
-  - En las **regiones**: Alibaba exige trámites para China continental, así que se usó su región internacional más cercana.
+  - En la **verificación de identidad**: Alibaba Cloud bloqueó la creación de la VM («Your account is at risk») hasta validar pasaporte o licencia, con unos 3 días hábiles de revisión. Se reemplazó por **Huawei Cloud**, también china, sin cambiar una línea de código.
+  - En la **activación**: AWS retuvo la cuenta hasta verificar la tarjeta, y OVHcloud deja el proyecto en «modo Discovery» hasta validar un medio de pago.
+  - En la **ubicación real**: un VPS de prueba presentado como «ecuatoriano» estaba en un centro de datos de OVH en Canadá; se detectó con ping, traceroute y el registro de la IP, y se reemplazó por Telecu (Ecuador).
   - En el **acceso**: DonWeb usa SSH en otro puerto, y cada nube tiene su propio usuario, firewall y grupo de seguridad (hubo que abrir UDP 51820 en las 5 para WireGuard).
   - En el **tipo de VPS**: algunos VPS mensuales no permiten módulos del kernel, y por eso WireGuard necesita una variante en espacio de usuario.
   - En los **precios y la facturación**, que son diferentes en cada proveedor.
 - Es exactamente la complejidad operativa que plantea la pregunta.
-- **Cómo la mitigamos:** una capa común propia, que **no pertenece a ningún proveedor**: etcd (coordinación), WireGuard (red privada) y contenedores. Así el clúster funciona igual sobre AWS, Alibaba, OVH, DonWeb y Telecu, y cualquier nube se puede reemplazar sin cambiar el código.
+- **Cómo la mitigamos:** una capa común propia, que **no pertenece a ningún proveedor**: etcd (coordinación), WireGuard (red privada) y contenedores. Así el clúster funciona igual sobre AWS, Huawei, OVH, DonWeb y Telecu, y cualquier nube se puede reemplazar sin cambiar el código.
 
 ---
 
@@ -193,7 +207,7 @@ La conclusión esperada es que ninguna región fuera de Ecuador queda por debajo
 - Para no quedar atados a un proveedor, conviene orquestar el borde con estándares abiertos (Kubernetes/KubeEdge) y **contenedores multiarquitectura**, porque muchos equipos de borde son ARM.
 
 📏 **Evidencia del proyecto:**
-- La nube `ecuador` (Telecu, Quito) cumple el papel de **nodo de borde**: es la más cercana a los usuarios del país y puede procesar sin sacar los datos (opción de soberanía).
+- La nube `ecuador` (Telecu, en Ecuador) cumple el papel de **nodo de borde**: es la más cercana a los usuarios del país y puede procesar sin sacar los datos (opción de soberanía). El VPS de prueba que estaba en Canadá **no habría servido** como borde: el borde tiene que estar físicamente cerca.
 - La imagen se publica para **amd64 y arm64**, así que puede correr en un servidor x86 o en un dispositivo de borde ARM.
 - El worker solo devuelve un **resumen** (conteos, en KB), no los datos crudos. Es el mismo patrón que el borde aplica con los datos de los sensores.
 
@@ -228,12 +242,12 @@ La conclusión esperada es que ninguna región fuera de Ecuador queda por debajo
 | Pregunta | Qué mostrar en el dashboard (sección Clúster) |
 |---|---|
 | 1 Latencia | **Medir red** y pestaña **Red entre nubes**: la fila ECUADOR, con los valores menores a 15 ms marcados con ✓ |
-| 2 Soberanía | **Opciones → Solo nubes en Ecuador**: el resultado es idéntico y solo participa ECUADOR |
+| 2 Soberanía | La verificación de ubicación (ping, traceroute, ipinfo) y **Opciones → Soberanía de datos → Solo servidores en Ecuador**, que filtra por ubicación física |
 | 3 Costos | Pestaña **Costo por transacción**: USD/h, USD/mes, costo por análisis, por 1 000 análisis y por GB |
 | 4 IA | Tarjetas de las nubes: potencia en GFLOPS, «GPU: no tiene», CPU y núcleos |
 | 5 Multinube | La misma imagen en 5 nubes, `migrar_imagen.sh` (migración en vivo) y **Ceder mando** entre nubes de distintos proveedores |
 | 6 Almacenamiento | Pestaña **Datos en las nubes**: las 5 copias con el mismo SHA-256 |
-| 7 Borde | La nube ECUADOR (Quito) y la imagen amd64 y arm64 |
+| 7 Borde | La nube ECUADOR (Telecu) y la imagen amd64 y arm64 |
 | 8 Continuidad | `nube.sh apagar usa` durante un análisis: otra nube toma el mando y retoma el trabajo (pestañas **Línea de tiempo** y **Eventos**) |
 
 ---

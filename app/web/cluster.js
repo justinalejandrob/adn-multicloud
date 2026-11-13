@@ -47,7 +47,7 @@ async function clPoll() {
 function nodeState(n, now) {
   if (n.estado === "caida") return "caida";
   if (n.apagado_flag || n.estado === "apagada") return "apagada";
-  if (isNum(n.visto) && now - n.visto > 7) return "caida";
+  if (isNum(n.visto) && now - n.visto > 15) return "caida";  // = ALIVE_S del coordinador
   return "viva";
 }
 const STATE_UI = { viva: ["VIVA", "var(--good-ink)"], apagada: ["APAGADA", "var(--warning)"], caida: ["CAÍDA", "var(--critical)"] };
@@ -122,7 +122,8 @@ function buildClAdvanced(d) {
     field("Operación", h("select", { id: "cl-modo" }, h("option", { value: "contar" }, "Contar bases + patrones"), h("option", { value: "comparar" }, "Comparar 2 archivos"))),
     field("Fragmento (MB)", h("input", { id: "cl-chunk", type: "number", min: 1, max: 512, value: 96 }), "La referencia usa ~96 MB"),
     field("Pedidos por nube", h("input", { id: "cl-hilos", type: "number", min: 0, max: 64, value: 0 }), "0 = uno por núcleo"),
-    field("Soberanía de datos", h("select", { id: "cl-pais" }, h("option", { value: "" }, "Todas las nubes"), h("option", { value: "Ecuador" }, "Solo nubes en Ecuador"))),
+    field("Soberanía de datos", h("select", { id: "cl-pais" }, h("option", { value: "" }, "Todas las nubes")),
+      "Filtra por el país donde está FÍSICAMENTE el servidor, no por la nacionalidad del proveedor"),
     h("div", { class: "field", style: { gridColumn: "1 / -1" } }, h("label", {}, "Nubes participantes"), h("div", { id: "cl-node-checks", style: { display: "flex", flexWrap: "wrap", gap: "6px 18px" } })),
     h("div", { class: "field", style: { gridColumn: "1 / -1", flexDirection: "row", gap: "20px", flexWrap: "wrap" } },
       h("label", { style: { display: "inline-flex", gap: "8px", alignItems: "center" } }, h("input", { type: "checkbox", id: "cl-verificar" }), "Verificar contra 1 núcleo (en el líder)"),
@@ -155,6 +156,15 @@ function refreshClAdvanced(d) {
         h("input", { type: "checkbox", value: c.nombre, checked: had ? prev.has(c.nombre) : ok, disabled: !c.listos }),
         h("span", { class: "mono" }, c.nombre), h("span", { class: "muted" }, `${nf(GB(c.bytes), 2)} GB · ${c.listos}/${c.total} nubes${c.sha.size > 1 ? " · ¡copias distintas!" : ""}`));
     }) : [h("span", { class: "muted" }, "Ninguna nube tiene archivos FASTA. Use la pestaña «Datos en las nubes».")]));
+  }
+  // soberanía: un país por cada ubicación física real de los servidores
+  const ps = $("#cl-pais"), paises = [...new Set(d.nodos.map((n) => n.pais).filter(Boolean))].sort();
+  if (ps && ps.dataset.sig !== paises.join("|")) {
+    const cur = ps.value;
+    ps.dataset.sig = paises.join("|");
+    ps.replaceChildren(h("option", { value: "" }, "Todas las nubes"),
+      ...paises.map((p) => h("option", { value: p }, `Solo servidores en ${p} (${d.nodos.filter((n) => n.pais === p).map((n) => up(n.nombre)).join(", ")})`)));
+    if (paises.includes(cur)) ps.value = cur;
   }
   const nb = $("#cl-node-checks"), nsig = d.nodos.map((n) => n.nombre).join("|");
   if (nb.dataset.sig !== nsig) {

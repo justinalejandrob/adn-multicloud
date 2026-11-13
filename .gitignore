@@ -11,3 +11,5 @@ __pycache__/
 cluster/nubes.conf
 .cache/
 .prueba/
+cluster/clave.txt
+cluster/*.log

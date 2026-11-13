@@ -14,7 +14,7 @@ El mismo contenedor corre en **cinco nubes de cinco regiones**. Entre todas anal
       │                                                                        │
    ┌──┴───────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐    ┌────────┴──┐
    │   USA    │    │  EUROPA   │    │   CHINA   │    │   LATAM   │    │  ECUADOR  │
-   │ AWS Ohio │    │ OVH Fránc.│    │ Alibaba SG│    │ DonWeb AR │    │ Telecu UIO│
+   │ AWS Ohio │    │ OVH Fránc.│    │ Huawei HK │    │ DonWeb AR │    │ Telecu EC │
    │ 10.99.0.1│    │ 10.99.0.2 │    │ 10.99.0.3 │    │ 10.99.0.5 │    │ 10.99.0.4 │
    │ adn-etcd │◀──▶│ adn-etcd  │◀──▶│ adn-etcd  │◀──▶│ adn-etcd  │◀──▶│ adn-etcd  │  Raft (5 miembros)
    │ adn-nodo │    │ adn-nodo  │    │ adn-nodo  │    │ adn-nodo  │    │ adn-nodo  │  worker + coordinador
@@ -28,9 +28,9 @@ El mismo contenedor corre en **cinco nubes de cinco regiones**. Entre todas anal
 |---|---|---|---|
 | `usa` | **AWS** | us-east-2 (Ohio) | Plan gratuito: hasta US$ 200 en créditos por 6 meses |
 | `europa` | **OVHcloud** | DE1 (Fráncfort) | Crédito de US$ 200 y cobro por hora |
-| `china` | **Alibaba Cloud** | ap-southeast-1 (Singapur), la región internacional más cercana a China. Anota su ubicación **real** | Tarjeta (cobro por uso) |
+| `china` | **Huawei Cloud** | CN-Hong Kong (Alibaba exigió verificación con pasaporte) | Tarjeta (cobro por uso) |
 | `latam` | **DonWeb** | Argentina | Cloud Server mensual (precio estimado). SSH en un puerto distinto (p. ej. 5349) |
-| `ecuador` | **Telecu Cloud** | Ecuador (Quito) | VPS mensual: TPX01 (1 vCPU, 1 GB) desde US$ 10 al mes con 10 TB de tráfico |
+| `ecuador` | **Telecu Cloud** | Guayaquil, Ecuador (red propia AS23246, verificado: 13 ms desde Quito) | VPS mensual TPX11: USD 15 + IVA |
 
 Los datos de cada nube (IP, puerto SSH, IP privada, precios) van en `cluster/nubes.conf`.
 
@@ -88,7 +88,7 @@ El script genera las claves **dentro** de cada nube (la clave privada nunca sale
 
 ```bash
 CLAVE='invente-una-clave-larga'
-IMAGE=ghcr.io/TU_USUARIO/adn-multicloud:latest bash scripts/cluster/desplegar_cluster.sh "$CLAVE"
+bash scripts/cluster/desplegar_cluster.sh "$CLAVE"
 # o con MIGRACIÓN EN VIVO (sin registro):
 docker build -t adn-multicloud:latest .
 bash scripts/cluster/desplegar_cluster.sh "$CLAVE" --migrar
@@ -189,4 +189,4 @@ sudo wg show
 | «disco insuficiente» al subir | Se necesita ≈ 2,1 × el tamaño del archivo (archivo + caché limpia), unos 6,5 GB para el genoma. Amplía el disco de esa VM |
 | «datos listos 0/2» en una nube | La nube está limpiando el FASTA (tarda unos segundos por GB), o el archivo no está en `~/cluster-adn/datos` |
 
-**Al terminar, destruye las VMs.** AWS, Alibaba y OVH cobran por hora.
+**Al terminar, destruye las VMs.** AWS, Huawei y OVH cobran por hora.

@@ -43,6 +43,9 @@ class EtcdError(RuntimeError):
 
 class Etcd:
     def __init__(self, endpoints, timeout: float = 4.0):
+        # serial=True en get/get_prefix: lectura "serializable" del miembro local de etcd,
+        # sin ir al líder Raft. Con 100-350 ms entre continentes, una lectura linealizable
+        # tarda ~0,5 s; la serializable tarda ~1 ms (puede ir unos ms atrasada).
         if isinstance(endpoints, str):
             endpoints = [e.strip() for e in endpoints.split(",") if e.strip()]
         self.endpoints = [e.rstrip("/") for e in endpoints]
@@ -82,15 +85,20 @@ class Etcd:
             body["lease"] = lease
         self._call("/v3/kv/put", body)
 
-    def get(self, key: str, default=None, as_json=True):
-        kvs = self._call("/v3/kv/range", {"key": _b64(key)}).get("kvs") or []
+    def get(self, key: str, default=None, as_json=True, serial=False):
+        body = {"key": _b64(key)}
+        if serial:
+            body["serializable"] = True
+        kvs = self._call("/v3/kv/range", body).get("kvs") or []
         if not kvs:
             return default
         v = _unb64(kvs[0].get("value", ""))
         return _loads(v) if as_json else v
 
-    def get_prefix(self, prefix: str, as_json=True, keys_only=False) -> dict:
+    def get_prefix(self, prefix: str, as_json=True, keys_only=False, serial=False) -> dict:
         body = {"key": _b64(prefix), "range_end": prefix_end(prefix)}
+        if serial:
+            body["serializable"] = True
         if keys_only:
             body["keys_only"] = True
         out = {}

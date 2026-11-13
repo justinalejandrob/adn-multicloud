@@ -14,11 +14,12 @@ set -euo pipefail
 NAME="${1:?Uso: bash instalar_nodo.sh NOMBRE 'CLAVE'}"
 TOKEN="${2:?Falta la CLAVE del clúster}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-IMAGE="${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}"
+IMAGE="${IMAGE:-ghcr.io/justinalejandrob/adn-multicloud:latest}"
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 log() { printf '\033[1;34m[%s]\033[0m %s\n' "$NAME" "$*"; }
 [ -f "$DIR/nodo.env" ] || { echo "Falta $DIR/nodo.env"; exit 1; }
-getv() { grep -E "^$1=" "$DIR/nodo.env" | head -1 | cut -d= -f2-; }   # (los valores pueden tener espacios)
+getv() { { grep -E "^$1=" "$DIR/nodo.env" || true; } | head -1 | cut -d= -f2-; }   # (valores con espacios; vacío si falta)
+trap 'echo "[$NAME] ERROR en la línea $LINENO (código $?)" >&2' ERR
 PRIVATE_IP="$(getv PRIVATE_IP)"; CLUSTER_PEERS="$(getv CLUSTER_PEERS)"; CLUSTER_STATE="$(getv CLUSTER_STATE)"
 
 command -v docker >/dev/null 2>&1 || { log "Instalando Docker..."; bash "$DIR/bootstrap_vm.sh"; }
@@ -38,7 +39,7 @@ $SUDO chown -R 1000:1000 "$DIR/datos" "$DIR/results"
 # --- etcd: solo se crea si no existe (sus datos viven en el volumen adn-etcd) ---
 if ! $SUDO docker ps -a --format '{{.Names}}' | grep -qx adn-etcd; then
   log "docker run adn-etcd (miembro $NAME de etcd en $PRIVATE_IP:2379)"
-  $SUDO docker run -d --name adn-etcd --restart unless-stopped --network host \
+  $SUDO docker run -d --name adn-etcd --restart unless-stopped --network host --cpu-shares 4096 \
     -v adn-etcd:/etcd-data \
     -e APP_MODE=etcd -e NODE_NAME="$NAME" -e PRIVATE_IP="$PRIVATE_IP" \
     -e CLUSTER_PEERS="$CLUSTER_PEERS" -e CLUSTER_STATE="${CLUSTER_STATE:-new}" \
@@ -51,7 +52,8 @@ fi
 # --- nodo: se reemplaza siempre (actualizar = volver a ejecutar este script) ---
 $SUDO docker rm -f adn-nodo >/dev/null 2>&1 || true
 log "docker run adn-nodo (worker en $PRIVATE_IP:8000, dashboard en 127.0.0.1:8080)"
-$SUDO docker run -d --name adn-nodo --restart unless-stopped --network host \
+# --cpu-shares bajo: con las CPUs al 100 % calculando ADN, etcd sigue respondiendo a tiempo
+$SUDO docker run -d --name adn-nodo --restart unless-stopped --network host --cpu-shares 256 \
   -v "$DIR/datos:/datos" -v "$DIR/results:/results" \
   --env-file "$DIR/nodo.env" \
   -e APP_MODE=nodo -e NODE_NAME="$NAME" -e CLUSTER_TOKEN="$TOKEN" \

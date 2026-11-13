@@ -12,7 +12,7 @@ source "$(dirname "$0")/_nubes.sh"
 TOKEN="${1:?Uso: desplegar_cluster.sh 'CLAVE' [--migrar] [nubes...]}"; shift
 MIGRAR=0; ONLY=()
 for a in "$@"; do [ "$a" = "--migrar" ] && MIGRAR=1 || ONLY+=("$a"); done
-IMAGE="${IMAGE:-ghcr.io/TU_USUARIO/adn-multicloud:latest}"
+IMAGE="${IMAGE:-ghcr.io/justinalejandrob/adn-multicloud:latest}"
 PEERS="$(etcd_peers)"; ENDS="$(etcd_endpoints)"; ORDEN="$(orden)"
 ok=(); fail=()
 

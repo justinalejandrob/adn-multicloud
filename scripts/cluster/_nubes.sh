@@ -12,7 +12,14 @@ campo() { nubes | awk -F'|' -v n="$1" -v c="$2" '$1==n {print $c}'; }
 
 # ejecutar por SSH en una nube:  en NOMBRE "comando"
 en() { local n="$1"; shift; ssh -p "$(campo "$n" 3)" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "$(campo "$n" 2)" "$@"; }
-copiar() { local n="$1" dest="$2"; shift 2; scp -q -P "$(campo "$n" 3)" -o StrictHostKeyChecking=accept-new "$@" "$(campo "$n" 2):$dest"; }
+# copiar NOMBRE DESTINO archivo...   (por ssh + cat: scp se cuelga en Git Bash de Windows)
+copiar() {
+  local n="$1" dest="$2" f d; shift 2
+  for f in "$@"; do
+    d="$dest"; [[ "$d" == */ ]] && d="$d$(basename "$f")"
+    en "$n" "cat > $d" < "$f" || return 1
+  done
+}
 
 # lista de miembros de etcd: usa=http://10.99.0.1:2380,...
 etcd_peers() { nubes | awk -F'|' '{printf "%s%s=http://%s:2380", (NR>1?",":""), $1, $4}'; }

@@ -58,28 +58,29 @@ def estado() -> dict:
         return {"modo": "sin_etcd", "mensaje": "Este dashboard no está conectado a etcd. Abra el túnel SSH "
                 "(ssh -L 2379:127.0.0.1:2379 usa) y defina ETCD_ENDPOINTS=http://localhost:2379, "
                 "o abra el dashboard de una de las nubes."}
+    t0 = time.time()  # «ahora» = momento de la lectura (no el final de la respuesta)
     try:
-        live = _strip(K_NODOS, ETCD.get_prefix(K_NODOS))
-        reg = _strip(K_REGISTRO, ETCD.get_prefix(K_REGISTRO))
-        off = set(_strip(K_APAGADO, ETCD.get_prefix(K_APAGADO, keys_only=True)))
-        lider = ETCD.get(K_LIDER, as_json=False)
-        ceder = ETCD.get(K_CEDER, as_json=False)
+        live = _strip(K_NODOS, ETCD.get_prefix(K_NODOS, serial=True))
+        reg = _strip(K_REGISTRO, ETCD.get_prefix(K_REGISTRO, serial=True))
+        off = set(_strip(K_APAGADO, ETCD.get_prefix(K_APAGADO, keys_only=True, serial=True)))
+        lider = ETCD.get(K_LIDER, as_json=False, serial=True)
+        ceder = ETCD.get(K_CEDER, as_json=False, serial=True)
         try:
             etcd_lider = ETCD.leader_name()
             members = ETCD.members()
         except EtcdError:
             etcd_lider, members = None, []
-        job = ETCD.get(K_TRABAJO)
+        job = ETCD.get(K_TRABAJO, serial=True)
         frags = []
         if isinstance(job, dict):
-            for rec in ETCD.get_prefix(f"{K_FRAG}{job['id']}/").values():
+            for rec in ETCD.get_prefix(f"{K_FRAG}{job['id']}/", serial=True).values():
                 if isinstance(rec, dict):
                     frags.append([rec["i"], rec["nodo"], rec["t0"], rec["t1"], rec.get("modo"), rec.get("bytes", 0)])
-        hist = ETCD.get_prefix(K_HIST)
-        evts = ETCD.get_prefix(K_EVT)
-        red = _strip(K_RED, ETCD.get_prefix(K_RED))
-        pend = len(ETCD.get_prefix(K_CMD, keys_only=True))
-        descargas = _strip(K_DESCARGAS, ETCD.get_prefix(K_DESCARGAS, as_json=False))
+        hist = ETCD.get_prefix(K_HIST, serial=True)
+        evts = ETCD.get_prefix(K_EVT, serial=True)
+        red = _strip(K_RED, ETCD.get_prefix(K_RED, serial=True))
+        pend = len(ETCD.get_prefix(K_CMD, keys_only=True, serial=True))
+        descargas = _strip(K_DESCARGAS, ETCD.get_prefix(K_DESCARGAS, as_json=False, serial=True))
     except EtcdError as exc:
         return {"modo": "etcd_error", "mensaje": f"etcd no responde: {exc}"}
 
@@ -106,7 +107,7 @@ def estado() -> dict:
         "etcd_lider": etcd_lider, "etcd_miembros": etcd_members, "ceder": ceder,
         "nodos": nodes, "trabajo": job, "fragmentos": sorted(frags),
         "historial": [hist[k] for k in sorted(hist)][-30:], "eventos": [evts[k] for k in keys[-80:]],
-        "red": red, "comandos_pendientes": pend, "descargas": descargas, "ahora": time.time(),
+        "red": red, "comandos_pendientes": pend, "descargas": descargas, "ahora": t0,
     }
 
 

@@ -11,7 +11,7 @@ Una sola imagen Docker procesa una cadena de ADN y se ejecuta **sin cambios** en
 
 Hay dos modelos de servicio:
 
-- **IaaS** (AWS, Alibaba Cloud, OVHcloud, DonWeb y Telecu): se crea una VM, se instala Docker y el contenedor corre en **modo batch** por SSH.
+- **IaaS** (AWS, Huawei Cloud, OVHcloud, DonWeb y Telecu): se crea una VM, se instala Docker y el contenedor corre en **modo batch** por SSH.
 - **PaaS** (opcional, por ejemplo GuaraCloud): la plataforma solo recibe la imagen y la ejecuta en **modo servidor HTTP**. No hay VM ni SSH.
 
 Cada nube devuelve los mismos conteos, y esa coincidencia es la prueba de portabilidad.
@@ -69,7 +69,7 @@ Si no hay `DNA_URL`, el generador `generate_dna.py` crea ADN sintético **determ
                                    │ misma imagen
        ┌──────────────┬────────────┼──────────────┬───────────────┐
        ▼              ▼            ▼              ▼               │
-  AWS (EE.UU.)  Alibaba (China/SG)  OVH (Europa)  DonWeb (AR) · Telecu (EC)
+  AWS (EE.UU.)  Huawei (China/HK)  OVH (Europa)  DonWeb (AR) · Telecu (EC)
   ── IaaS: VM + docker compose, modo batch ──    ── PaaS opc. ──  │
        │  (SSH + scp)  │            │             APP_MODE=server │
        │              │            │             HTTP /run        │
@@ -195,7 +195,7 @@ La sección Multicloud lee automáticamente `results/` y sus subcarpetas `result
 
 ### Paso 3: Crear una VM en cada nube
 
-En las 5 nubes (AWS, Alibaba Cloud, OVHcloud, DonWeb y Telecu) harás lo mismo. Para el **clúster con etcd** sigue después **[docs/CLUSTER.md](docs/CLUSTER.md)**. El paso 4B (PaaS) es opcional.
+En las 5 nubes (AWS, Huawei Cloud, OVHcloud, DonWeb y Telecu) harás lo mismo. Para el **clúster con etcd** sigue después **[docs/CLUSTER.md](docs/CLUSTER.md)**. El paso 4B (PaaS) es opcional.
 
 1. Crea una VM con **Ubuntu 22.04 o 24.04**, de 1 a 2 vCPU y de 1 a 4 GB de RAM.
 2. Descarga o crea la **llave SSH**.
@@ -207,16 +207,16 @@ Opcionalmente, pega `scripts/bootstrap_vm.sh` en el campo *User data* o *cloud-i
 | Nube | Proveedor | Cómo obtenerlo | Recurso de referencia |
 |---|---|---|---|
 | 🇺🇸 Americana (`usa`) | **AWS** (us-east-2 Ohio) | Cuenta nueva con el plan gratuito: US$ 100 al registrarse y hasta US$ 100 más por usar servicios, durante 6 meses | `m7i-flex.large` (2 vCPU, 8 GB) |
-| 🇨🇳 China (`china`) | **Alibaba Cloud** (internacional, ap-southeast-1 Singapur) | Cuenta internacional con tarjeta. Las regiones de China continental exigen trámites (ICP), por eso se usa la región internacional más cercana. **Anota la ubicación real** | `ecs.c9i.xlarge` (4 vCPU) o uno menor |
+| 🇨🇳 China (`china`) | **Huawei Cloud** (CN-Hong Kong) | Cuenta internacional con tarjeta, pago por uso. Se eligió Huawei porque Alibaba Cloud exigió verificar identidad con pasaporte (≈ 3 días hábiles) | `s7n.xlarge.2` (4 vCPU, 8 GB) |
 | 🇪🇺 Europea (`europa`) | **OVHcloud** (DE1 Fráncfort) | Public Cloud con US$ 200 de crédito y cobro por hora. El tráfico de salida está incluido (1 TB al mes por proyecto) | `b3-16` (4 vCPU, 16 GB) o `d2-4` |
 | 🌎 Latinoamericana (`latam`) | **DonWeb** (Argentina) | Cloud Server con cuota mensual (precio **estimado** en el informe). Su SSH puede usar otro puerto (p. ej. 5349) | 1 vCPU, 1 GB |
-| 🇪🇨 Ecuatoriana (`ecuador`) | **Telecu Cloud** (Quito) | VPS en Ecuador: TPX01 (1 vCPU, 1 GB, 20 GB SSD, 10 TB de tráfico) desde US$ 10 al mes | `TPX01` o `TPX11` |
+| 🇪🇨 Ecuatoriana (`ecuador`) | **Telecu Cloud** (geolocalización Ecuador) | VPS mensual: TPX11 (2 vCPU, 2 GB, 40 GB SSD, 10 TB) a USD 15 + IVA; servidor verificado en Guayaquil (AS23246). **Verifica la ubicación real** con `ping` y `tracert` desde Ecuador (ver `docs/EVALUACION_S11.md`, pregunta 2) | `TPX11` |
 
 **Notas importantes por proveedor**
 
 - **Precios:** cópialos de **tu** panel a `cluster/nubes.conf`. El dashboard calcula con ellos el costo por transacción.
 - **WireGuard:** abre **UDP 51820** en el firewall de cada nube. Si un VPS mensual (DonWeb, Telecu) es un contenedor sin módulos del kernel, usa `wireguard-go` (ver docs/CLUSTER.md).
-- **Usuario SSH:** AWS (Ubuntu) usa `ubuntu`; Alibaba, `root`; OVH, `ubuntu`. En DonWeb y Telecu, el que indique el panel.
+- **Usuario SSH:** AWS (Ubuntu) usa `ubuntu`; Huawei, `root`; OVH, `ubuntu`. En DonWeb y Telecu, el que indique el panel.
 
 📸 **Evidencia:** captura de cada consola con la VM creada, mostrando la región y el tipo de VM.
 
@@ -291,7 +291,7 @@ Este comando genera lo siguiente en `results/`:
 
 ### Paso 6: Apagar y borrar las VMs
 
-Cuando termines y guardes las evidencias, **elimina las VMs, los discos y las IPs públicas** en AWS, Alibaba, OVHcloud, DonWeb y Telecu (y el servicio PaaS si lo usaste), para no consumir crédito ni recibir cobros.
+Cuando termines y guardes las evidencias, **elimina las VMs, los discos y las IPs públicas** en AWS, Huawei Cloud, OVHcloud, DonWeb y Telecu (y el servicio PaaS si lo usaste), para no consumir crédito ni recibir cobros.
 
 ---
 
