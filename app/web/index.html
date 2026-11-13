@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ADN Multinube</title>
-  <meta name="description" content="Dashboard del procesamiento paralelo de ADN portable entre nubes">
+  <meta name="description" content="Clúster de ADN en 5 nubes: procesamiento, rendimiento, comparación de proveedores y Evaluación S11">
   <link rel="stylesheet" href="/styles.css">
   <script>
     try { const t = localStorage.getItem("adn-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -28,6 +28,7 @@
       <a href="#rendimiento" data-view="rendimiento"><i data-icon="gauge"></i><span>Rendimiento</span></a>
       <a href="#multicloud" data-view="multicloud"><i data-icon="cloud"></i><span>Multicloud</span></a>
       <a href="#cluster" data-view="cluster"><i data-icon="network"></i><span>Clúster</span></a>
+      <a href="#evaluacion" data-view="evaluacion"><i data-icon="clipboard"></i><span>Evaluación S11</span></a>
     </nav>
     <div class="sidebar-foot">
       <div class="cloud-chip">
@@ -53,140 +54,22 @@
       </div>
       <div class="top-actions">
         <span class="pill" id="status-pill"><span class="dot"></span><span id="status-pill-text">Conectando…</span></span>
-        <a class="btn" href="/results" target="_blank" rel="noopener"><i data-icon="download"></i>JSON</a>
-        <a class="btn primary" href="#adn" id="top-run"><i data-icon="play"></i>Nuevo análisis</a>
+        <a class="btn" href="/api/cluster/estado" target="_blank" rel="noopener"><i data-icon="download"></i>JSON</a>
+        <a class="btn primary" href="#cluster" id="top-run"><i data-icon="play"></i>Nuevo análisis</a>
       </div>
     </header>
 
+    <!-- Cada sección se dibuja con los datos REALES del clúster (etcd). -->
     <!-- ========== 1. Panel principal ========== -->
-    <section data-section="panel">
-      <div class="grid kpis" id="kpis"></div>
-      <div class="grid two" style="margin-top:16px">
-        <div class="stack">
-          <div class="card status-card" id="status-card"></div>
-          <div class="card">
-            <div class="card-head">
-              <div><h2 class="card-title">Registro de ejecución</h2><p class="card-sub">Salida del contenedor en tiempo real</p></div>
-            </div>
-            <pre class="log" id="log" aria-live="polite"></pre>
-          </div>
-        </div>
-        <div class="stack">
-          <div class="card" id="provider-card"></div>
-          <div class="card" id="last-card"></div>
-        </div>
-      </div>
-    </section>
-
+    <section data-section="panel"><div id="panel-root"></div></section>
     <!-- ========== 2. Procesamiento ADN ========== -->
-    <section data-section="adn" class="hidden">
-      <div class="grid two">
-        <div class="card">
-          <div class="card-head">
-            <div><h2 class="card-title">Configurar análisis</h2><p class="card-sub">Parámetros del procesamiento</p></div>
-          </div>
-          <form class="form" id="run-form" novalidate></form>
-        </div>
-        <div class="card">
-          <div class="card-head">
-            <div><h2 class="card-title">Avance</h2><p class="card-sub" id="progress-sub">Sin ejecución en curso</p></div>
-          </div>
-          <div class="steps" id="steps"></div>
-        </div>
-      </div>
-      <div class="grid kpis" id="adn-stats" style="margin-top:16px"></div>
-      <div class="grid two" style="margin-top:16px">
-        <div class="card">
-          <div class="card-head">
-            <div><h2 class="card-title">Composición de bases</h2><p class="card-sub">Porcentaje sobre la longitud total de la secuencia</p></div>
-          </div>
-          <div id="composition"></div>
-        </div>
-        <div class="stack">
-          <div class="card" id="gc-card"></div>
-          <div class="card" id="invalid-card"></div>
-        </div>
-      </div>
-    </section>
-
+    <section data-section="adn" class="hidden"><div id="adn-root"></div></section>
     <!-- ========== 3. Rendimiento ========== -->
-    <section data-section="rendimiento" class="hidden">
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-head" style="margin:0">
-          <div><h2 class="card-title">Ejecución analizada</h2><p class="card-sub">Elija un resultado guardado</p></div>
-          <select id="perf-select" class="btn" aria-label="Resultado"></select>
-        </div>
-      </div>
-      <div class="grid kpis" id="perf-kpis"></div>
-      <div class="grid halves" style="margin-top:16px">
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Tiempo por modo</h2><p class="card-sub">Segundos (menos es mejor)</p></div></div>
-          <div class="chart" id="chart-times"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Speedup vs. procesos</h2><p class="card-sub">Comparado con el speedup ideal (lineal)</p></div></div>
-          <div class="chart" id="chart-speedup"></div>
-        </div>
-      </div>
-      <div class="grid halves" style="margin-top:16px">
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Velocidad de procesamiento</h2><p class="card-sub">MB/s por número de procesos</p></div></div>
-          <div class="chart" id="chart-throughput"></div>
-        </div>
-        <div class="card" id="amdahl-card"></div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <div class="card-head"><div><h2 class="card-title">Detalle de ejecuciones</h2></div></div>
-        <div class="table-wrap" id="runs-table"></div>
-      </div>
-    </section>
-
+    <section data-section="rendimiento" class="hidden"><div id="perf-root"></div></section>
     <!-- ========== 4. Multicloud ========== -->
-    <section data-section="multicloud" class="hidden">
-      <div class="grid two">
-        <div class="card">
-          <div class="card-head">
-            <div><h2 class="card-title">Resultados de las nubes</h2>
-              <p class="card-sub">Se leen de la carpeta <span class="mono">results/</span> y de los JSON que importe</p></div>
-            <button class="btn" id="export-csv" type="button"><i data-icon="download"></i>CSV</button>
-          </div>
-          <label class="dropzone" id="dropzone">
-            <input type="file" id="file-input" accept=".json,application/json" multiple hidden>
-            <i data-icon="upload"></i> Arrastre aquí los <b>resultado_*.json</b> de cada nube o haga clic para elegirlos
-          </label>
-          <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <span class="muted" id="import-count"></span>
-            <button class="btn hidden" id="clear-imports" type="button">Quitar importados</button>
-          </div>
-        </div>
-        <div class="stack" id="integrity"></div>
-      </div>
-      <div class="provider-cards" id="provider-cards" style="margin-top:16px"></div>
-      <div class="grid halves" style="margin-top:16px">
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Tiempo por proveedor</h2><p class="card-sub">Secuencial vs. paralelo, segundos</p></div></div>
-          <div class="chart" id="chart-mc-times"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Velocidad en paralelo</h2><p class="card-sub">MB/s (más es mejor)</p></div></div>
-          <div class="chart" id="chart-mc-throughput"></div>
-        </div>
-      </div>
-      <div class="grid halves" style="margin-top:16px">
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Speedup por proveedor</h2><p class="card-sub">Paralelo frente a secuencial (veces)</p></div></div>
-          <div class="chart" id="chart-mc-speedup"></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><div><h2 class="card-title">Descarga del genoma</h2><p class="card-sub">Segundos para traer el archivo a cada nube</p></div></div>
-          <div class="chart" id="chart-mc-download"></div>
-        </div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <div class="card-head"><div><h2 class="card-title">Comparación detallada</h2><p class="card-sub">Último resultado de cada proveedor</p></div></div>
-        <div class="table-wrap" id="mc-table"></div>
-      </div>
-    </section>
+    <section data-section="multicloud" class="hidden"><div id="mc-root"></div></section>
+    <!-- ========== 6. Evaluación S11 (experimentos en las 5 nubes) ========== -->
+    <section data-section="evaluacion" class="hidden"><div id="ev-root"></div></section>
     <!-- ========== 5. Clúster (líder elegido con etcd + WireGuard entre 5 nubes) ========== -->
     <section data-section="cluster" class="hidden">
       <div id="cl-setup"></div>
@@ -235,6 +118,8 @@
 </div>
 <div id="tooltip" class="hidden" role="tooltip"></div>
 <script src="/cluster.js"></script>
+<script src="/secciones.js"></script>
+<script src="/evaluacion.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

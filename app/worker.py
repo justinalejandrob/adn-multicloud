@@ -26,6 +26,7 @@ Endpoints:
   POST /sink     (token)      mide la velocidad de SUBIDA (descarta el cuerpo)
   GET  /archivo?nombre=X (token) entrega un FASTA de /datos a otra nube
   GET  /source?mb=N (token)   mide la velocidad de BAJADA (envía N MB)
+  POST /eval/<medición> (token) mediciones de la Evaluación S11 (evaluacion.py)
 """
 
 from __future__ import annotations
@@ -445,13 +446,15 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(401, {"error": "token inválido o ausente (cabecera X-Token)"})
         return False
 
-    def send_data_file(self, name: str) -> None:
+    def send_data_file(self, name: str, offset: int = 0, length: int = -1) -> None:
         try:
             fp = data_path(name)
-            size = os.path.getsize(fp)
+            total = os.path.getsize(fp)
         except (ValueError, OSError):
             self.reply(404, {"error": f"{name} no existe en {NODE_NAME}"})
             return
+        offset = max(0, min(offset, total))
+        size = total - offset if length < 0 else max(0, min(length, total - offset))
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Length", str(size))
@@ -461,7 +464,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 sent = 0
                 while sent < size:  # sendfile puede enviar menos de lo pedido
-                    n = os.sendfile(self.connection.fileno(), fh.fileno(), sent, min(size - sent, 64 * MB))
+                    n = os.sendfile(self.connection.fileno(), fh.fileno(), offset + sent, min(size - sent, 64 * MB))
                     if n == 0:
                         break
                     sent += n
@@ -511,9 +514,17 @@ class Handler(BaseHTTPRequestHandler):
                         seg_calculo=round(data["seg_calculo"], 3))
             self.reply(200, data)
         elif url.path == "/archivo":
-            # entrega un FASTA de /datos a otra nube del clúster (replicación por WireGuard)
+            # entrega un FASTA de /datos a otra nube del clúster (replicación por WireGuard);
+            # con offset y longitud entrega solo un bloque (recuperación de una réplica, pregunta 6)
             if self.authorized():
-                self.send_data_file((parse_qs(url.query).get("nombre") or [""])[0])
+                q = parse_qs(url.query)
+                try:
+                    off = int((q.get("offset") or ["0"])[0])
+                    n = int((q.get("longitud") or ["-1"])[0])
+                except ValueError:
+                    self.reply(400, {"error": "offset y longitud deben ser enteros"})
+                    return
+                self.send_data_file((q.get("nombre") or [""])[0], off, n)
         elif url.path == "/source":
             if not self.authorized():
                 return
@@ -526,6 +537,18 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if OFFLINE and path != "/sink":
             self.reply(503, {"error": f"{NODE_NAME} está apagada (simulado)", "node": NODE_NAME})
+            return
+        if path.startswith("/eval/"):
+            # mediciones de la Evaluación S11 (evaluacion.py): las pide el dashboard por WireGuard
+            if self.authorized():
+                params = self.read_json()
+                if params is not None:
+                    import evaluacion  # noqa: PLC0415
+                    try:
+                        self.reply(200, evaluacion.local(path[len("/eval/"):], params,
+                                                         {"nodo": NODE_NAME, "token": TOKEN}))
+                    except Exception as exc:  # noqa: BLE001
+                        self.reply(400, {"error": str(exc)[:300], "node": NODE_NAME})
             return
         if path in ("/count_ref", "/compare_ref", "/preparar", "/descargar"):
             if self.authorized():

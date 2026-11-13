@@ -259,7 +259,8 @@ sys.path.insert(0, APP_DIR)
 import cluster_api  # noqa: E402  (API del clúster: maestro que reparte a las nubes)
 
 STATIC = {"/": "index.html", "/index.html": "index.html",
-          "/app.js": "app.js", "/cluster.js": "cluster.js", "/styles.css": "styles.css"}
+          "/app.js": "app.js", "/cluster.js": "cluster.js", "/styles.css": "styles.css",
+          "/secciones.js": "secciones.js", "/evaluacion.js": "evaluacion.js"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -303,7 +304,12 @@ class Handler(BaseHTTPRequestHandler):
             code, body = receive_upload(self, parse_qs(url.query), length)
             self.send(code, body)
             return
-        if url.path.startswith("/api/cluster/") or url.path in ("/api/ejecutar", "/api/cancelar"):
+        if url.path.startswith("/api/eval/"):
+            if length > 64 * 1024:
+                self.send(413, {"error": "cuerpo demasiado grande"})
+                return
+            code, body = cluster_api.eval_post(url.path, self.rfile.read(length))
+        elif url.path.startswith("/api/cluster/") or url.path in ("/api/ejecutar", "/api/cancelar"):
             if length > 1024 * 1024:
                 self.send(413, {"error": "cuerpo demasiado grande"})
                 return
@@ -319,6 +325,9 @@ class Handler(BaseHTTPRequestHandler):
         path = url.path
         if path in ("/api/cluster/estado", "/api/estado"):
             self.send(200, cluster_api.estado())
+            return
+        if path == "/api/eval":
+            self.send(200, cluster_api.eval_estado())
             return
         if path == "/health":
             self.send(200, "ok", "text/plain")

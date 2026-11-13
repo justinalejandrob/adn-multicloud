@@ -25,8 +25,11 @@ PRIVATE_IP="$(getv PRIVATE_IP)"; CLUSTER_PEERS="$(getv CLUSTER_PEERS)"; CLUSTER_
 command -v docker >/dev/null 2>&1 || { log "Instalando Docker..."; bash "$DIR/bootstrap_vm.sh"; }
 ip -4 addr show wg0 2>/dev/null | grep -q "$PRIVATE_IP" || { log "ERROR: wg0 no tiene $PRIVATE_IP. Ejecute antes wireguard_malla.sh"; exit 1; }
 
-if $SUDO docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  log "Imagen local: $IMAGE"
+# siempre se intenta bajar la última versión (si no hay internet se usa la local)
+if $SUDO docker pull -q "$IMAGE" >/dev/null 2>&1; then
+  log "Imagen actualizada: $IMAGE ($($SUDO docker image inspect -f '{{.Id}}' "$IMAGE" | cut -c8-19))"
+elif $SUDO docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  log "Imagen local (sin conexión al registro): $IMAGE"
 elif $SUDO docker image inspect adn-multicloud:latest >/dev/null 2>&1; then
   IMAGE=adn-multicloud:latest; log "Imagen local (migrada): $IMAGE"
 else
@@ -59,9 +62,10 @@ $SUDO docker run -d --name adn-nodo --restart unless-stopped --network host --cp
   -e APP_MODE=nodo -e NODE_NAME="$NAME" -e CLUSTER_TOKEN="$TOKEN" \
   -e PRIVATE_URL="http://$PRIVATE_IP:8000" -e WORKER_BIND="$PRIVATE_IP" \
   -e DASH_BIND=127.0.0.1 -e PORT=8080 \
+  -e IMAGE_ID="$($SUDO docker image inspect -f '{{.Id}}' "$IMAGE" 2>/dev/null || true)" \
   "$IMAGE" >/dev/null
 
-sleep 4
+for _ in 1 2 3 4 5 6 7 8 9 10; do sleep 2; curl -fsS "http://$PRIVATE_IP:8000/health" >/dev/null 2>&1 && break; done
 if curl -fsS "http://$PRIVATE_IP:8000/health" >/dev/null; then
   log "Nodo en línea. Estado de etcd:"
   $SUDO docker exec adn-etcd etcdctl --endpoints="http://127.0.0.1:2379" endpoint status -w table 2>/dev/null || true

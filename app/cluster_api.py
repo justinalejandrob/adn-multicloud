@@ -188,6 +188,33 @@ def handle_post(path: str, query: dict, raw: bytes) -> tuple[int, dict]:
         return 503, {"error": f"etcd no responde: {exc}"}
 
 
+def eval_estado() -> dict:
+    """GET /api/eval: resultados de la Evaluación S11 guardados en etcd."""
+    import evaluacion  # noqa: PLC0415
+    if ETCD is None:
+        return {"modo": "sin_etcd", "resultados": {}}
+    try:
+        return evaluacion.estado(ETCD)
+    except EtcdError as exc:
+        return {"modo": "etcd_error", "mensaje": str(exc), "resultados": {}}
+
+
+def eval_post(path: str, raw: bytes) -> tuple[int, dict]:
+    """POST /api/eval/ejecutar {pregunta: p1..p8 | todas | escalabilidad}."""
+    import evaluacion  # noqa: PLC0415
+    if ETCD is None:
+        return 400, {"error": "El dashboard no está conectado a etcd"}
+    try:
+        p = _body(raw)
+        if path.rstrip("/").rsplit("/", 1)[-1] != "ejecutar":
+            return 404, {"error": "no encontrado"}
+        return evaluacion.lanzar(ETCD, COORD, str(p.get("pregunta", "")))
+    except ValueError as exc:
+        return 400, {"error": str(exc)}
+    except EtcdError as exc:
+        return 503, {"error": f"etcd no responde: {exc}"}
+
+
 def _ejecutar(p: dict) -> tuple[int, dict]:
     files = [str(x) for x in (p.get("archivos") or [])]
     modo = p.get("modo", "contar")
